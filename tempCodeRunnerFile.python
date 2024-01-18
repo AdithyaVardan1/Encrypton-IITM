@@ -1,0 +1,114 @@
+# %%
+import numpy as np
+import pandas as pd
+from scipy import stats
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_squared_error
+
+# %%
+df = pd.read_csv('test2021.csv')
+df.head(5)
+
+# %%
+df.info()
+
+# %%
+
+# Preprocessing
+
+# Removing unnecessary columns
+# Adjust the column names based on your dataset
+columns_to_drop = ['snow_1h']
+df.drop(columns=columns_to_drop, inplace=True, errors='ignore')
+
+# Handling missing values
+# You can choose to fill missing values with a value or drop them
+df.fillna(method='ffill', inplace=True)  # Forward fill
+# df.dropna(inplace=True)  # Or drop rows with missing values
+
+# Removing outliers
+# Adjust 'your_column' to the column you want to remove outliers from
+z_scores = stats.zscore(df['wind_speed'])
+abs_z_scores = np.abs(z_scores)
+filtered_entries = (abs_z_scores < 3)  # Adjust the threshold as necessary
+df = df[filtered_entries]
+
+z_scores = stats.zscore(df['SunlightTime/daylength'])
+abs_z_scores = np.abs(z_scores)
+filtered_entries = (abs_z_scores < 3)  # Adjust the threshold as necessary
+df = df[filtered_entries]
+
+# Scoring logic for wind speed and solar data
+# Adjust the column names and scoring logic as per your dataset and requirements
+
+# Example scoring for wind speed
+def wind_speed_score(wind_speed):
+    # Example scoring logic for wind speed
+    return (wind_speed / 20) * 10  # Assuming maximum wind speed is 20 m/s
+
+df['wind_speed_score'] = df['wind_speed'].apply(wind_speed_score)
+
+# Example scoring for solar data
+def solar_score(sunlightTime, dayLength, GHI):
+    sunlight_score = 0
+    if dayLength > 0:
+        ratio = sunlightTime / dayLength
+        sunlight_score = ratio * 10  # Half weight to sunlight time
+
+    # Scoring based on GHI - assuming GHI > 300 is good for solar energy
+    ghi_score = (GHI / 300) * 10 if GHI <= 300 else 10
+
+    return sunlight_score + ghi_score
+
+df['solar_score'] = df.apply(lambda row: solar_score(row['sunlightTime'], row['dayLength'], row['GHI']), axis=1)
+
+# Train-Test Split for Wind Energy
+X_wind = df[['wind_speed']]
+y_wind = df['wind_speed_score']
+
+X_wind_train, X_wind_test, y_wind_train, y_wind_test = train_test_split(X_wind, y_wind, test_size=0.2, random_state=42)
+
+# Wind Energy Prediction Model - Random Forest Regressor
+wind_model = RandomForestRegressor(n_estimators=100, random_state=42)
+wind_model.fit(X_wind_train, y_wind_train)
+
+# Make Wind Energy Predictions
+y_wind_pred = wind_model.predict(X_wind_test)
+
+# Evaluate Wind Energy Model
+wind_mse = mean_squared_error(y_wind_test, y_wind_pred)
+print(f"Wind Energy Mean Squared Error: {wind_mse}")
+
+# Save the trained wind energy model for future use
+import joblib
+joblib.dump(wind_model, 'wind_speed_prediction_model.joblib')
+
+# Train-Test Split for Solar Energy
+X_solar = df[['sunlightTime', 'dayLength', 'GHI']]
+y_solar = df['solar_score']
+
+X_solar_train, X_solar_test, y_solar_train, y_solar_test = train_test_split(X_solar, y_solar, test_size=0.2, random_state=42)
+
+# Solar Energy Prediction Model - Random Forest Regressor
+solar_model = RandomForestRegressor(n_estimators=100, random_state=42)
+solar_model.fit(X_solar_train, y_solar_train)
+
+# Make Solar Energy Predictions
+y_solar_pred = solar_model.predict(X_solar_test)
+
+# Evaluate Solar Energy Model
+solar_mse = mean_squared_error(y_solar_test, y_solar_pred)
+print(f"Solar Energy Mean Squared Error: {solar_mse}")
+
+# Save the trained solar energy model for future use
+joblib.dump(solar_model, 'solar_score_prediction_model.joblib')
+
+# Example Usage:
+# Load the model: loaded_wind_model = joblib.load('wind_speed_prediction_model.joblib')
+# Make wind energy predictions: new_wind_predictions = loaded_wind_model.predict(new_wind_data)
+# Load the model: loaded_solar_model = joblib.load('solar_score_prediction_model.joblib')
+# Make solar energy predictions: new_solar_predictions = loaded_solar_model.predict(new_solar_data)
+
+# Save the processed dataset
+df.to_csv('processed_dataset.csv', index=False)
